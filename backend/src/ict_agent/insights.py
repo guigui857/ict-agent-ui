@@ -364,3 +364,82 @@ def get_action_queue(store: DuckDBStore) -> list[dict[str, Any]]:
         })
     severity = {"RED": 0, "ORANGE": 1, "YELLOW": 2, "GREEN": 3}
     return sorted(rows, key=lambda x: severity[x["tier"]])
+
+
+def get_ar_aging(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        SELECT strftime("快照时间", '%Y-%m') AS period,
+               CASE WHEN "超期天数" <= 0 THEN '0'
+                    WHEN "超期天数" <= 30 THEN '1-30'
+                    WHEN "超期天数" <= 60 THEN '31-60'
+                    WHEN "超期天数" <= 90 THEN '61-90'
+                    ELSE '90+' END AS bucket,
+               SUM("超期应收金额") AS amount
+        FROM ar_snapshots
+        GROUP BY 1, 2 ORDER BY 1, 2
+    """)
+    return [{"period": r[0], "bucket": r[1], "amount": float(r[2] or 0)} for r in rows]
+
+
+def get_inventory_aging(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        SELECT strftime("快照日期", '%Y-%m') AS quarter,
+               CASE WHEN "库龄" <= 90 THEN '<=90'
+                    WHEN "库龄" <= 180 THEN '91-180'
+                    WHEN "库龄" <= 365 THEN '181-365'
+                    ELSE '>365' END AS bucket,
+               SUM("含税总价") AS amount
+        FROM inventory_snapshots
+        GROUP BY 1, 2 ORDER BY 1, 2
+    """)
+    return [{"quarter": r[0], "bucket": r[1], "amount": float(r[2] or 0)} for r in rows]
+
+
+def get_extension_heatmap(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        SELECT "客户编号" AS cid, strftime("快照时间", '%Y-%m') AS month, COUNT(*) AS cnt
+        FROM extensions GROUP BY 1, 2 ORDER BY 1, 2
+    """)
+    return [{"customer_id": r[0], "month": r[1], "count": int(r[2])} for r in rows]
+
+
+def get_inventory_economic(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        SELECT CASE WHEN i."库龄" <= 90 THEN '<=90'
+                    WHEN i."库龄" <= 180 THEN '91-180'
+                    WHEN i."库龄" <= 365 THEN '181-365'
+                    ELSE '>365' END AS bucket,
+               AVG(s."销售金额_折扣后_含税" - s."出库成本金额") AS margin
+        FROM inventory_snapshots i
+        LEFT JOIN sales s USING ("物料编码")
+        GROUP BY 1 ORDER BY 1
+    """)
+    return [{"bucket": r[0], "margin": float(r[1]) if r[1] is not None else None} for r in rows]
+
+
+def get_revenue_trend(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        SELECT strftime("出库日期", '%Y-%m') AS month,
+               SUM("销售金额_折扣后_含税") AS revenue,
+               SUM("销售金额_折扣后_含税") - SUM("出库成本金额") AS gross_profit,
+               SUM("销售金额_折扣后_含税") - SUM("出库成本金额") AS cm2
+        FROM sales GROUP BY 1 ORDER BY 1
+    """)
+    return [{"month": r[0], "revenue": float(r[1] or 0),
+             "gross_profit": float(r[2] or 0), "cm2": float(r[3] or 0)} for r in rows]
+
+
+def get_vintage(store: DuckDBStore) -> list[dict[str, Any]]:
+    rows = _fetch_rows(store, """
+        WITH base AS (
+            SELECT "客户编号" AS cid, strftime("快照时间", '%Y-%m') AS period,
+                   SUM("应收金额") AS bal, SUM("超期应收金额") AS overdue
+            FROM ar_snapshots GROUP BY 1, 2
+        )
+        SELECT period AS cohort,
+               COUNT(*) AS elapsed,
+               CASE WHEN SUM(bal) = 0 THEN NULL ELSE SUM(overdue) / SUM(bal) END AS overdue_rate
+        FROM base GROUP BY period ORDER BY period
+    """)
+    return [{"cohort": r[0], "elapsed": int(r[1]),
+             "overdue_rate": float(r[2]) if r[2] is not None else None} for r in rows]

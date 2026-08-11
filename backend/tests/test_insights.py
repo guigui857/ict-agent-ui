@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from ict_agent.insights import get_action_queue, get_customer_detail, get_customer_scores
+from ict_agent.insights import (
+    get_action_queue,
+    get_ar_aging,
+    get_customer_detail,
+    get_customer_scores,
+    get_extension_heatmap,
+    get_inventory_aging,
+    get_inventory_economic,
+    get_revenue_trend,
+    get_vintage,
+)
 
 
 def test_scores_return_all_credit_customers(store) -> None:
@@ -62,3 +72,14 @@ def test_action_queue_sorted_by_severity(store) -> None:
     tiers = [order[q["tier"]] for q in queue]
     assert tiers == sorted(tiers)
     assert all(q["side"] == "RECEIVABLE" for q in queue)
+
+
+def test_visualization_datasets_shapes(store) -> None:
+    assert get_ar_aging(store), "账龄结构应有数据"
+    assert get_inventory_aging(store)
+    assert get_extension_heatmap(store) is not None
+    assert get_inventory_economic(store)
+    for row in get_revenue_trend(store):
+        assert {"month", "revenue", "gross_profit", "cm2"} <= set(row)
+    for row in get_vintage(store):
+        assert {"cohort", "elapsed", "overdue_rate"} <= set(row)
