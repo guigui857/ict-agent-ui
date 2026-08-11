@@ -39,6 +39,7 @@ from ict_agent.service import (
     get_insights_extension_heatmap,
     get_insights_inventory_aging,
     get_insights_inventory_economic,
+    get_insights_overrides,
     get_insights_revenue_trend,
     get_insights_vintage,
     get_risk_overview,
@@ -262,6 +263,13 @@ async def insights_actions() -> ItemsResponse:
     """返回应收侧四级动作队列。"""
 
     return ItemsResponse(items=get_insights_actions())
+
+
+@app.get("/api/v1/insights/overrides", response_model=ItemsResponse, tags=["insights"])
+async def insights_overrides() -> ItemsResponse:
+    """返回全部人工 override 的审计记录（最新在前）。"""
+
+    return ItemsResponse(items=get_insights_overrides())
 
 
 @app.get("/", include_in_schema=False)

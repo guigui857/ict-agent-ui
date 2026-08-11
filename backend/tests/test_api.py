@@ -108,3 +108,29 @@ def test_insights_customer_detail_and_404() -> None:
     assert detail.status_code == 200
     assert "warning_state" in detail.json()
     assert client.get("/api/v1/insights/customers/NO_SUCH_CUSTOMER").status_code == 404
+
+
+def test_review_with_override_is_recorded() -> None:
+    case = client.get("/api/v1/cases").json()[0]
+    payload = {
+        "decision": "FALSE_POSITIVE",
+        "reviewer": "审计员A",
+        "reason": "经核实为误报",
+        "override_status": "APPROVED",
+        "override_reason": "客户已还款",
+        "approver": "风控主管",
+    }
+    resp = client.post(f"/api/v1/cases/{case['case_id']}/reviews", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["override_status"] == "APPROVED"
+    assert body["approver"] == "风控主管"
+
+    overrides = client.get("/api/v1/insights/overrides").json()["items"]
+    assert any(o["review_id"] == body["review_id"] and o["override_status"] == "APPROVED" for o in overrides)
+
+
+def test_insights_overrides_empty_or_list() -> None:
+    resp = client.get("/api/v1/insights/overrides")
+    assert resp.status_code == 200
+    assert "items" in resp.json()

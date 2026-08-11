@@ -495,6 +495,18 @@ def get_insights_actions(*, settings: Settings | None = None) -> list[dict[str, 
     return get_action_queue(_open_store(settings))
 
 
+def get_insights_overrides(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    runtime_settings = settings or load_settings(require_api_key=False, require_data_dir=False)
+    store = CaseStore(runtime_settings.case_database_path)
+    rows = store.fetch_overrides().rows
+    columns = [
+        "review_id", "case_id", "decision", "reviewer", "reason", "action",
+        "override_status", "override_reason", "override_expiry_date",
+        "approver", "next_review_at", "created_at",
+    ]
+    return [dict(zip(columns, row)) for row in rows]
+
+
 def review_case(
     case_id: str,
     request: ReviewRequest,
@@ -526,6 +538,14 @@ def review_case(
             next_review_at=(
                 request.next_review_at.isoformat() if request.next_review_at is not None else None
             ),
+            override_status=request.override_status,
+            override_reason=request.override_reason,
+            override_expiry_date=(
+                request.override_expiry_date.isoformat()
+                if request.override_expiry_date is not None
+                else None
+            ),
+            approver=request.approver,
             created_at=created_at,
         )
         store.save_review(record, status_by_decision[request.decision])
@@ -537,6 +557,10 @@ def review_case(
             reason=record.reason,
             action=record.action,
             next_review_at=record.next_review_at,
+            override_status=record.override_status,
+            override_reason=record.override_reason,
+            override_expiry_date=record.override_expiry_date,
+            approver=record.approver,
             created_at=record.created_at,
         )
     except ServiceError:
