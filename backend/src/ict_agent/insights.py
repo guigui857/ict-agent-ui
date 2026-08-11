@@ -181,3 +181,156 @@ def _terciles(sorted_values: list[float]) -> tuple[float, float]:
     if n == 0:
         return (0.0, 100.0)
     return (sorted_values[max(0, n // 3 - 1)], sorted_values[max(0, (2 * n) // 3 - 1)])
+
+
+_WARNING_SQL = """
+WITH latest_ar AS (
+    SELECT * FROM ar_snapshots
+    WHERE "快照时间" = (SELECT MAX("快照时间") FROM ar_snapshots)
+),
+per_customer AS (
+    SELECT
+        "客户编号" AS cid,
+        MAX("超期天数") AS max_dpd,
+        SUM("超期应收金额") AS overdue_amount,
+        MIN(CASE WHEN "最终承诺还款日期" >= "快照时间"
+                 THEN CAST(date_diff('day', "快照时间", "最终承诺还款日期") AS INTEGER) END) AS days_to_due,
+        SUM(CASE WHEN "是否展期" = '是' THEN 1 ELSE 0 END) AS extended_rows
+    FROM latest_ar GROUP BY "客户编号"
+),
+payments90 AS (
+    SELECT "客户编号" AS cid, SUM("回款金额") AS recent_payment
+    FROM payments
+    WHERE "回款日期" >= CURRENT_DATE - INTERVAL '90 day'
+    GROUP BY "客户编号"
+),
+ext AS (
+    SELECT "客户编号" AS cid, COUNT(DISTINCT gkey) AS extension_count,
+           MIN("快照时间") AS earliest, MAX("快照时间") AS latest
+    FROM extensions GROUP BY "客户编号"
+)
+SELECT
+    c."客户编号_中台" AS cid,          -- 0
+    c."客户名称" AS cname,              -- 1
+    c."授信额度" AS credit_limit,       -- 2
+    c."黑白名单状态" AS blacklist,      -- 3
+    c."失信分级" AS rating,             -- 4
+    COALESCE(p.max_dpd, 0) AS max_dpd,  -- 5
+    COALESCE(p.overdue_amount, 0) AS overdue_amount,  -- 6
+    p.days_to_due,                      -- 7
+    COALESCE(p.extended_rows, 0) AS extended_rows,    -- 8
+    COALESCE(p9.recent_payment, 0) AS recent_payment, -- 9
+    COALESCE(e.extension_count, 0) AS extension_count, -- 10
+    e.earliest,                         -- 11
+    e.latest                            -- 12
+FROM customer_credit c
+LEFT JOIN per_customer p ON p.cid = c."客户编号_中台"
+LEFT JOIN payments90 p9 ON p9.cid = c."客户编号_中台"
+LEFT JOIN ext e ON e.cid = c."客户编号_中台"
+"""
+
+
+def _warning_state(max_dpd: int, overdue_amount: float, days_to_due: Any,
+                   recent_payment: float, blacklist: int, extension_count: int) -> str:
+    """按口径第 8 节判定预警状态。"""
+    if overdue_amount <= 0:
+        if days_to_due is not None and 0 <= float(days_to_due) <= PRE_DUE_ALERT_DAYS:
+            return "PRE_DUE"
+        return "NOT_DUE"
+    if max_dpd >= 90:
+        if recent_payment > 0 and blacklist != 2 and extension_count < 3:
+            return "HIGH_WATCH_BUT_NOT_DEFAULT"
+        return "INDIVIDUAL_ECL"
+    if max_dpd >= 60:
+        return "DPD_60_PLUS"
+    if max_dpd >= 30:
+        return "DPD_30_PLUS"
+    return "DPD_1_PLUS"
+
+
+def _action_tier(state: str, extension_count: int, gross_profit: float, date_reset_count: int) -> str:
+    """按口径第 11 节判定四级动作。"""
+    if date_reset_count >= 1:
+        return "RED"
+    if state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT"} or extension_count >= 3:
+        return "ORANGE"
+    if state in {"DPD_30_PLUS", "DPD_60_PLUS"}:
+        return "YELLOW"
+    if gross_profit <= 0:
+        return "ORANGE"
+    return "GREEN"
+
+
+_EXTENSION_DETAIL_SQL = """
+WITH latest_ar AS (
+    SELECT * FROM ar_snapshots
+    WHERE "快照时间" = (SELECT MAX("快照时间") FROM ar_snapshots)
+),
+ar_marked AS (
+    SELECT "客户编号" AS cid, "销售订单号" AS order_id, "是否展期" AS is_ext
+    FROM latest_ar WHERE "客户编号" = ?
+),
+ext_keys AS (
+    SELECT DISTINCT "销售订单号" AS order_id FROM extensions WHERE "客户编号" = ?
+)
+SELECT
+    a.order_id, a.is_ext,
+    CASE WHEN e.order_id IS NULL THEN 0 ELSE 1 END AS has_ext_record
+FROM ar_marked a LEFT JOIN ext_keys e ON e.order_id = a.order_id
+"""
+
+
+def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
+    """返回单客户评分、预警状态、展期识别、授信触发与四级动作。"""
+    scores = {row["customer_id"]: row for row in get_customer_scores(store)}
+    base = _fetch_rows(store, _WARNING_SQL)
+    row = next((r for r in base if str(r[0]) == customer_id), None)
+    if row is None:
+        raise KeyError(f"未知客户 {customer_id}")
+    # 列序（与 _WARNING_SQL 对齐）：0 cid, 1 cname, 2 credit_limit, 3 blacklist, 4 rating,
+    # 5 max_dpd, 6 overdue, 7 days_to_due, 8 extended_rows, 9 recent_payment, 10 extension_count,
+    # 11 earliest, 12 latest
+    max_dpd, overdue, days_to_due = int(row[5]), float(row[6]), row[7]
+    recent_payment, blacklist, ext_count = float(row[9]), int(row[3]), int(row[10])
+    rating = str(row[4] or "")
+    state = _warning_state(max_dpd, overdue, days_to_due, recent_payment, blacklist, ext_count)
+
+    ext_rows = _fetch_rows(store, _EXTENSION_DETAIL_SQL, [customer_id, customer_id])
+    explicit = sum(1 for r in ext_rows if str(r[1]) == "是" and int(r[2]) == 1)
+    date_reset = sum(1 for r in ext_rows if str(r[1]) == "是" and int(r[2]) == 0)
+    rollover = 0  # 口径注明：疑似滚动需跨期时序，P1 先按 0 并保留字段
+    earliest = str(row[11]) if row[11] else None
+    latest = str(row[12]) if row[12] else None
+
+    score = scores.get(customer_id, {})
+    v_tier = score.get("v_tier", "mid")
+    r_tier = score.get("r_tier", "mid")
+    utilization = (float(row[6]) / float(row[2])) if float(row[2]) else 0.0
+    increase = (
+        v_tier == "high" and utilization >= 0.7 and recent_payment > 0 and r_tier != "high"
+        and state not in {"INDIVIDUAL_ECL", "DPD_90_REVIEW"}
+    )
+    decrease = (state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "DPD_60_PLUS", "DPD_30_PLUS"}
+                or ext_count >= 3 or utilization >= 1.0 or float(score.get("gross_profit", 0) or 0) <= 0)
+    stop = blacklist == 2 or (rating.strip() not in ("", "无"))
+    gross = float(score.get("gross_profit", 0) or 0)
+
+    return {
+        "customer_id": customer_id,
+        "customer_name": str(row[1] or customer_id),
+        "scores": score,
+        "warning_state": state,
+        "extensions": {
+            "explicit_count": explicit,
+            "date_reset_count": date_reset,
+            "rollover_suspected_count": rollover,
+            "earliest": earliest,
+            "latest": latest,
+        },
+        "credit_triggers": {
+            "increase_signals": ["高价值且授信使用充分" ] if increase else [],
+            "decrease_signals": ["DPD 恶化或展期频繁或授信满额"] if decrease else [],
+            "stop_signals": ["黑名单/失信硬事实"] if stop else [],
+        },
+        "action_tier": _action_tier(state, ext_count, gross, date_reset),
+    }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ict_agent.insights import get_customer_scores
+from ict_agent.insights import get_customer_detail, get_customer_scores
 
 
 def test_scores_return_all_credit_customers(store) -> None:
@@ -33,3 +33,16 @@ def test_value_score_direction(store) -> None:
     top = max(scores, key=lambda s: s["gross_profit"])
     assert top["v_tier"] == "high"
     assert top["v_score"] >= 50
+
+
+def test_customer_detail_has_state_machine_and_triggers(store) -> None:
+    detail = get_customer_detail(store, "C015")
+
+    assert detail["customer_id"] == "C015"
+    assert detail["warning_state"] in {
+        "NOT_DUE", "PRE_DUE", "DPD_1_PLUS", "DPD_30_PLUS", "DPD_60_PLUS",
+        "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT", "INDIVIDUAL_ECL",
+    }
+    assert "explicit_count" in detail["extensions"]
+    assert isinstance(detail["credit_triggers"]["increase_signals"], list)
+    assert detail["action_tier"] in {"GREEN", "YELLOW", "ORANGE", "RED"}
