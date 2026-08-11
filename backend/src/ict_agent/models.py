@@ -386,11 +386,21 @@ class ReviewRequest(BaseModel):
     reason: Annotated[str, Field(min_length=2, max_length=1_000)]
     action: Annotated[str | None, Field(max_length=1_000)] = None
     next_review_at: date | None = None
+    override_status: Literal["APPROVED", "REJECTED"] | None = None
+    override_reason: Annotated[str | None, Field(max_length=500)] = None
+    override_expiry_date: date | None = None
+    approver: Annotated[str | None, Field(max_length=100)] = None
 
     @model_validator(mode="after")
     def monitoring_requires_review_date(self) -> ReviewRequest:
         if self.decision == "MONITOR" and self.next_review_at is None:
             raise ValueError("持续观察必须填写下一次复查日期")
+        return self
+
+    @model_validator(mode="after")
+    def override_requires_reason_and_approver(self) -> ReviewRequest:
+        if self.override_status is not None and (not self.override_reason or not self.approver):
+            raise ValueError("记录 override 必须填写 override_reason 与 approver")
         return self
 
 
@@ -404,6 +414,10 @@ class ReviewRecord(BaseModel):
     reason: str
     action: str | None
     next_review_at: str | None
+    override_status: str | None = None
+    override_reason: str | None = None
+    override_expiry_date: str | None = None
+    approver: str | None = None
     created_at: str
 
 
@@ -467,3 +481,20 @@ class CustomerDetailResponse(BaseModel):
 
 class ItemsResponse(BaseModel):
     items: list[dict[str, Any]]
+
+
+class OverrideRecord(BaseModel):
+    """一次人工 override 的审计记录（保留原始规则命中的前提下）。"""
+
+    review_id: str
+    case_id: str
+    decision: ReviewDecision
+    reviewer: str
+    reason: str
+    action: str | None
+    override_status: str
+    override_reason: str | None
+    override_expiry_date: str | None
+    approver: str | None
+    next_review_at: str | None
+    created_at: str

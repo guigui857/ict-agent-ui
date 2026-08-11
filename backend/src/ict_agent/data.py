@@ -149,6 +149,10 @@ class ReviewWrite:
     action: str | None
     next_review_at: str | None
     created_at: str
+    override_status: str | None = None
+    override_reason: str | None = None
+    override_expiry_date: str | None = None
+    approver: str | None = None
 
 
 TABLE_SPECS: dict[str, TableSpec] = {
@@ -739,9 +743,25 @@ class CaseStore:
                 reason VARCHAR NOT NULL,
                 action VARCHAR,
                 next_review_at DATE,
-                created_at TIMESTAMP NOT NULL
+                created_at TIMESTAMP NOT NULL,
+                override_status VARCHAR,
+                override_reason VARCHAR,
+                override_expiry_date DATE,
+                approver VARCHAR
             )
             """
+        )
+        connection.execute(
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS override_status VARCHAR"
+        )
+        connection.execute(
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS override_reason VARCHAR"
+        )
+        connection.execute(
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS override_expiry_date DATE"
+        )
+        connection.execute(
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS approver VARCHAR"
         )
 
     def ensure_ready(self) -> None:
@@ -948,6 +968,20 @@ class CaseStore:
             [case_id],
         )
 
+    def fetch_overrides(self) -> QueryResult:
+        """返回全部有 override 记录的审核（最新在前）。"""
+
+        return self._fetch(
+            """
+            SELECT review_id, case_id, decision, reviewer, reason, action,
+                   override_status, override_reason, override_expiry_date,
+                   approver, next_review_at, created_at
+            FROM reviews
+            WHERE override_status IS NOT NULL
+            ORDER BY created_at DESC
+            """
+        )
+
     def fetch_overview(self) -> QueryResult:
         """返回风险首页案件聚合。"""
 
@@ -1009,7 +1043,7 @@ class CaseStore:
             with duckdb.connect(str(self.database_path)) as connection:
                 connection.begin()
                 connection.execute(
-                    "INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         record.review_id,
                         record.case_id,
@@ -1019,6 +1053,10 @@ class CaseStore:
                         record.action,
                         record.next_review_at,
                         record.created_at,
+                        record.override_status,
+                        record.override_reason,
+                        record.override_expiry_date,
+                        record.approver,
                     ],
                 )
                 connection.execute(
