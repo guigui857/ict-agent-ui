@@ -305,10 +305,21 @@ FROM ar_marked a LEFT JOIN ext_keys e ON e.order_id = a.order_id
 """
 
 
-def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
+def _load_precomputed(store: DuckDBStore) -> dict[str, Any]:
+    """一次载入评分与预警基表，供队列与详情共享，避免 N×M 重跑。"""
+    return {
+        "scores": {row["customer_id"]: row for row in get_customer_scores(store)},
+        "warning_rows": _fetch_rows(store, _WARNING_SQL),
+    }
+
+
+def get_customer_detail(
+    store: DuckDBStore, customer_id: str, _precomputed: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """返回单客户评分、预警状态、展期识别、授信触发与四级动作。"""
-    scores = {row["customer_id"]: row for row in get_customer_scores(store)}
-    base = _fetch_rows(store, _WARNING_SQL)
+    pre = _precomputed if _precomputed is not None else _load_precomputed(store)
+    scores = pre["scores"]
+    base = pre["warning_rows"]
     row = next((r for r in base if str(r[0]) == customer_id), None)
     if row is None:
         raise KeyError(f"未知客户 {customer_id}")
@@ -371,11 +382,12 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
 
 def get_action_queue(store: DuckDBStore) -> list[dict[str, Any]]:
     """应收侧四级动作队列，按严重度排序。"""
+    pre = _load_precomputed(store)
     rows = []
-    for detail_row in _fetch_rows(store, _WARNING_SQL):
+    for detail_row in pre["warning_rows"]:
         cid = str(detail_row[0])
         try:
-            detail = get_customer_detail(store, cid)
+            detail = get_customer_detail(store, cid, _precomputed=pre)
         except KeyError:
             continue
         reasons = [detail["warning_state"]]
