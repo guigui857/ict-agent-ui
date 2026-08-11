@@ -25,3 +25,10 @@ def test_blacklist_is_hard_high(store) -> None:
     assert blacklisted, "微型夹具应至少包含一个黑名单/失信客户以验证硬覆盖"
     for row in blacklisted:
         assert row["r_tier"] == "high"
+
+
+def test_value_score_direction(store) -> None:
+    scores = get_customer_scores(store)
+    top = max(scores, key=lambda s: s["gross_profit"])
+    assert top["v_tier"] == "high"
+    assert top["v_score"] >= 50

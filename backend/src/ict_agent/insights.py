@@ -31,16 +31,14 @@ def _fetch_rows(store: DuckDBStore, sql: str, parameters: Any = ()) -> list[tupl
     return list(store.fetch(sql, parameters).rows)
 
 
-def _feature_scores(rows: list[tuple[Any, ...]], value_index: int, higher_is_better: bool) -> dict[str, float]:
-    """按经验分布把某列转成 0-100 分：rank/n*100；越小越好则反向。"""
+def _feature_scores(rows: list[tuple[Any, ...]], value_index: int) -> dict[str, float]:
+    """按经验分布把某列转成 0-100 分（升序分位）：数值越大 → 分位越高。"""
     n = len(rows)
     if n == 0:
         return {}
-    ordered = sorted(rows, key=lambda r: float(r[value_index] or 0), reverse=higher_is_better)
-    rank: dict[str, int] = {}
-    for position, row in enumerate(ordered, start=1):
-        rank[str(row[0])] = position
-    return {key: round((position - 1) / max(n - 1, 1) * 100.0, 2) for key, position in rank.items()}
+    ordered = sorted(rows, key=lambda r: float(r[value_index] or 0))
+    return {str(row[0]): round((position - 1) / max(n - 1, 1) * 100.0, 2)
+            for position, row in enumerate(ordered, start=1)}
 
 
 _CUSTOMER_FEATURES_SQL = """
@@ -123,19 +121,19 @@ def get_customer_scores(store: DuckDBStore) -> list[dict[str, Any]]:
     # 4 category_breadth, 5 active_months, 6 payment_stability, 7 max_dpd, 8 overdue_ratio,
     # 9 dpd90_ratio, 10 overdue30_ratio, 11 extension_count, 12 credit_utilization, 13 blacklist, 14 rating
     value_scores = {
-        "revenue": _feature_scores(rows, 2, True),
-        "gross_profit": _feature_scores(rows, 3, True),
-        "category_breadth": _feature_scores(rows, 4, True),
-        "active_months": _feature_scores(rows, 5, True),
-        "payment_stability": _feature_scores(rows, 6, True),
+        "revenue": _feature_scores(rows, 2),
+        "gross_profit": _feature_scores(rows, 3),
+        "category_breadth": _feature_scores(rows, 4),
+        "active_months": _feature_scores(rows, 5),
+        "payment_stability": _feature_scores(rows, 6),
     }
     risk_scores = {
-        "max_dpd": _feature_scores(rows, 7, False),
-        "overdue_ratio": _feature_scores(rows, 8, False),
-        "dpd90_ratio": _feature_scores(rows, 9, False),
-        "overdue30_ratio": _feature_scores(rows, 10, False),
-        "extension_count": _feature_scores(rows, 11, False),
-        "credit_utilization": _feature_scores(rows, 12, False),
+        "max_dpd": _feature_scores(rows, 7),
+        "overdue_ratio": _feature_scores(rows, 8),
+        "dpd90_ratio": _feature_scores(rows, 9),
+        "overdue30_ratio": _feature_scores(rows, 10),
+        "extension_count": _feature_scores(rows, 11),
+        "credit_utilization": _feature_scores(rows, 12),
     }
     result: list[dict[str, Any]] = []
     for row in rows:
