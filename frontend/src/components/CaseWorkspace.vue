@@ -19,7 +19,7 @@ const loading = ref(true);
 const error = ref("");
 const tab = ref("investigation");
 const submitting = ref(false);
-const form = reactive({ decision: "", reviewer: "", reason: "", action: "", next_review_at: "" });
+const form = reactive({ decision: "", reviewer: "", reason: "", action: "", next_review_at: "", override_status: "", override_reason: "", override_expiry_date: "", approver: "" });
 const decisionOptions = [
   { title: "请选择审核决定", value: "" },
   { title: "暂时接受，持续观察", value: "MONITOR" },
@@ -27,7 +27,16 @@ const decisionOptions = [
   { title: "确认误报或数据问题", value: "FALSE_POSITIVE" },
   { title: "风险已经解决", value: "RESOLVED" },
 ];
-const canSubmit = computed(() => form.decision && form.reviewer.trim() && form.reason.trim().length >= 2 && (form.decision !== "MONITOR" || form.next_review_at));
+const overrideOptions = [
+  { title: "不记录 override", value: "" },
+  { title: "批准覆盖（APPROVED）", value: "APPROVED" },
+  { title: "拒绝覆盖（REJECTED）", value: "REJECTED" },
+];
+const canSubmit = computed(() =>
+  form.decision && form.reviewer.trim() && form.reason.trim().length >= 2 &&
+  (form.decision !== "MONITOR" || form.next_review_at) &&
+  (form.override_status === "" || (form.override_reason.trim().length >= 2 && form.approver.trim()))
+);
 const tabs = [
   { value: "investigation", label: "Agent 调查", icon: Sparkles },
   { value: "signals", label: "规则信号", icon: Radar },
@@ -61,7 +70,7 @@ watch(
   () => route.params.caseId,
   (id) => {
     tab.value = "investigation";
-    Object.assign(form, { decision: "", reviewer: "", reason: "", action: "", next_review_at: "" });
+    Object.assign(form, { decision: "", reviewer: "", reason: "", action: "", next_review_at: "", override_status: "", override_reason: "", override_expiry_date: "", approver: "" });
     if (id) loadCase(id);
   },
   { immediate: true }
@@ -85,9 +94,13 @@ async function submitReview() {
         reason: form.reason.trim(),
         action: form.action.trim() || null,
         next_review_at: form.decision === "MONITOR" ? form.next_review_at : null,
+        override_status: form.override_status || null,
+        override_reason: form.override_reason.trim() || null,
+        override_expiry_date: form.override_expiry_date || null,
+        approver: form.approver.trim() || null,
       }),
     });
-    Object.assign(form, { decision: "", reason: "", action: "", next_review_at: "" });
+    Object.assign(form, { decision: "", reason: "", action: "", next_review_at: "", override_status: "", override_reason: "", override_expiry_date: "", approver: "" });
     await refresh();
   } catch (exception) {
     workspace.status = { text: exception.message, error: true };
@@ -183,6 +196,18 @@ function reviewLabel(decision) {
             <div v-if="form.decision === 'MONITOR'">
               <span class="mb-1.5 block text-sm font-medium text-ink">复查日期</span>
               <TextInput v-model="form.next_review_at" type="date" />
+            </div>
+            <div class="rounded-lg border border-border p-3">
+              <span class="mb-2 block text-xs font-semibold text-ink">人工 override（可选）</span>
+              <p class="mb-3 text-[11px] leading-5 text-muted">记录对规则命中的人工覆盖，保留原始规则命中以可审计；不要用覆盖来抹掉逾期/超限事实。</p>
+              <SelectInput v-model="form.override_status" :options="overrideOptions" />
+              <div v-if="form.override_status" class="mt-3 space-y-3">
+                <TextArea v-model="form.override_reason" rows="2" maxlength="500" placeholder="override 原因" />
+                <div class="flex flex-wrap gap-3">
+                  <div class="min-w-[180px] flex-1"><span class="mb-1.5 block text-sm font-medium text-ink">覆盖到期日</span><TextInput v-model="form.override_expiry_date" type="date" /></div>
+                  <div class="min-w-[180px] flex-1"><TextInput v-model="form.approver" maxlength="100" placeholder="审批人" /></div>
+                </div>
+              </div>
             </div>
             <Button block :disabled="!canSubmit" :loading="submitting" @click="submitReview">提交人工审核</Button>
           </div>
