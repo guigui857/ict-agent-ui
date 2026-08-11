@@ -24,6 +24,7 @@ const toastVisible = ref(false);
 
 function isActive(path) {
   if (path === "/cases") return route.path.startsWith("/cases");
+  if (path === "/insights/customers") return route.path.startsWith("/insights");
   return route.path === path;
 }
 function navigate(path) {
