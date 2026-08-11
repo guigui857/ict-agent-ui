@@ -1,8 +1,8 @@
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 import VueApexCharts from "vue3-apexcharts";
 import { AlertCircle, ChartLine, HandCoins, Wallet } from "lucide-vue-next";
-import { formatMoney, formatPercent, metricMap } from "../lib";
+import { api, formatMoney, formatPercent, metricMap } from "../lib";
 import { workspace } from "../store";
 
 const data = computed(() => workspace.business);
@@ -26,7 +26,7 @@ const toneIcon = {
 };
 const trend = computed(() => (workspace.business?.ar_trend?.rows || []).slice(-8).reverse());
 const trendCategories = computed(() => trend.value.map((r) => r[0]));
-const trendSeries = computed(() => [
+const arTrendSeries = computed(() => [
   { name: "应收余额", data: trend.value.map((r) => Number(r[1])) },
   { name: "超期应收", data: trend.value.map((r) => Number(r[2])) },
 ]);
@@ -48,6 +48,38 @@ const trendOptions = computed(() => ({
   legend: { position: "top", horizontalAlign: "right", fontSize: "12px", labels: { colors: "#667085" }, markers: { size: 4 } },
   tooltip: { y: { formatter: (value) => formatMoney(value) } },
 }));
+
+const revenueTrend = ref([]);
+const trendLoading = ref(true);
+const trendError = ref("");
+
+const trendSeries = computed(() => [
+  { name: "销售额", data: revenueTrend.value.map((r) => ({ x: r.month, y: r.revenue })) },
+  { name: "含税粗算毛利", data: revenueTrend.value.map((r) => ({ x: r.month, y: r.gross_profit })) },
+]);
+const trendChartOptions = computed(() => ({
+  chart: { type: "area", toolbar: { show: false }, fontFamily: "DM Sans, 'Microsoft YaHei', sans-serif" },
+  colors: ["#465fff", "#039855"],
+  stroke: { curve: "smooth", width: 2 },
+  fill: { type: "gradient", gradient: { opacityFrom: 0.15, opacityTo: 0 } },
+  dataLabels: { enabled: false },
+  legend: { position: "top", horizontalAlign: "right", fontSize: "12px", labels: { colors: "#667085" } },
+  xaxis: { labels: { style: { colors: "#98a2b3", fontSize: "11px" } } },
+  yaxis: { labels: { formatter: (v) => (Math.abs(v) >= 100000000 ? (v / 100000000).toFixed(1) + "亿" : v >= 10000 ? (v / 10000).toFixed(0) + "万" : v), style: { colors: "#98a2b3", fontSize: "11px" } } },
+  grid: { borderColor: "#e4e7ec", strokeDashArray: 3 },
+  tooltip: { y: { formatter: (value) => formatMoney(value) } },
+}));
+
+async function loadTrend() {
+  trendLoading.value = false;
+  try {
+    const r = await api("/api/v1/insights/revenue-trend");
+    revenueTrend.value = r.items || [];
+  } catch (e) {
+    trendError.value = e.message;
+  }
+}
+onMounted(loadTrend);
 </script>
 
 <template>
@@ -68,11 +100,22 @@ const trendOptions = computed(() => ({
 
     <section class="card">
       <div class="panel-head">
+        <div class="flex items-center gap-2"><span class="section-index">R</span><h3>销售额与毛利时序</h3></div>
+        <span class="subtle-copy">月度 · 含退货负值</span>
+      </div>
+      <div class="px-5 pt-4">
+        <VueApexCharts v-if="!trendLoading" type="area" height="280" :options="trendChartOptions" :series="trendSeries" />
+        <div v-if="trendError" class="py-8 text-center text-xs text-muted">{{ trendError }}</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="panel-head">
         <div class="flex items-center gap-2"><span class="section-index">C</span><h3>最近应收趋势</h3></div>
         <span class="subtle-copy">每个月末独立聚合</span>
       </div>
       <div class="px-5 pt-4">
-        <VueApexCharts type="area" height="260" :options="trendOptions" :series="trendSeries" />
+        <VueApexCharts type="area" height="260" :options="trendOptions" :series="arTrendSeries" />
       </div>
       <div class="overflow-x-auto border-t border-border">
         <table class="table-base">
