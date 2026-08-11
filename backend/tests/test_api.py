@@ -94,6 +94,8 @@ def test_insights_endpoints_return_json() -> None:
         "/api/v1/insights/revenue-trend",
         "/api/v1/insights/vintage",
         "/api/v1/insights/actions",
+        "/api/v1/insights/extension-heatmap",
+        "/api/v1/insights/inventory-economic",
     ):
         response = client.get(path)
         assert response.status_code == 200, path

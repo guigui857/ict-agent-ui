@@ -201,7 +201,11 @@ async def insights_customers() -> ItemsResponse:
     return ItemsResponse(items=get_insights_customers())
 
 
-@app.get("/api/v1/insights/customers/{customer_id}", response_model=CustomerDetailResponse, tags=["insights"])
+@app.get(
+    "/api/v1/insights/customers/{customer_id}",
+    response_model=CustomerDetailResponse,
+    tags=["insights"],
+)
 async def insights_customer_detail(customer_id: str) -> CustomerDetailResponse:
     """返回单客户评分、预警状态、展期识别、授信触发与四级动作。"""
 

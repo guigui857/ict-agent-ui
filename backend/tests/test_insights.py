@@ -26,7 +26,13 @@ def test_scores_return_all_credit_customers(store) -> None:
         assert row["v_tier"] in {"high", "mid", "low"}
         assert row["r_tier"] in {"high", "mid", "low"}
         assert row["grid"].startswith("value")
-        assert row["warning_state"] in {"NOT_DUE", "DPD_1_PLUS", "DPD_30_PLUS", "DPD_60_PLUS", "DPD_90_REVIEW"}
+        assert row["warning_state"] in {
+            "NOT_DUE",
+            "DPD_1_PLUS",
+            "DPD_30_PLUS",
+            "DPD_60_PLUS",
+            "DPD_90_REVIEW",
+        }
 
 
 def test_blacklist_is_hard_high(store) -> None:
@@ -50,8 +56,14 @@ def test_customer_detail_has_state_machine_and_triggers(store) -> None:
 
     assert detail["customer_id"] == "C015"
     assert detail["warning_state"] in {
-        "NOT_DUE", "PRE_DUE", "DPD_1_PLUS", "DPD_30_PLUS", "DPD_60_PLUS",
-        "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT", "INDIVIDUAL_ECL",
+        "NOT_DUE",
+        "PRE_DUE",
+        "DPD_1_PLUS",
+        "DPD_30_PLUS",
+        "DPD_60_PLUS",
+        "DPD_90_REVIEW",
+        "HIGH_WATCH_BUT_NOT_DEFAULT",
+        "INDIVIDUAL_ECL",
     }
     assert "explicit_count" in detail["extensions"]
     assert isinstance(detail["credit_triggers"]["increase_signals"], list)

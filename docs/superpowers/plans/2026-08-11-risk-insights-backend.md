@@ -202,7 +202,9 @@ def _fetch_rows(store: DuckDBStore, sql: str, parameters: Any = ()) -> list[tupl
     return list(store.fetch(sql, parameters).rows)
 
 
-def _feature_scores(rows: list[tuple[Any, ...]], value_index: int, higher_is_better: bool) -> dict[str, float]:
+def _feature_scores(
+    rows: list[tuple[Any, ...]], value_index: int, higher_is_better: bool
+) -> dict[str, float]:
     """按经验分布把某列转成 0-100 分：rank/n*100；越小越好则反向。"""
     n = len(rows)
     if n == 0:
@@ -321,25 +323,31 @@ def get_customer_scores(store: DuckDBStore) -> list[dict[str, Any]]:
         blacklist = int(row[13])
         rating = str(row[14] or "")
         hard = blacklist == 2 or (rating.strip() != "" and rating.strip() != "无")
-        result.append({
-            "customer_id": cid,
-            "customer_name": str(row[1] or cid),
-            "gross_profit": float(row[3] or 0),
-            "v_score": round(v, 2),
-            "r_score": round(r, 2),
-            "v_tier": "",
-            "r_tier": "high" if hard else "",
-            "hard_overlay": hard,
-            "grid": "",
-        })
+        result.append(
+            {
+                "customer_id": cid,
+                "customer_name": str(row[1] or cid),
+                "gross_profit": float(row[3] or 0),
+                "v_score": round(v, 2),
+                "r_score": round(r, 2),
+                "v_tier": "",
+                "r_tier": "high" if hard else "",
+                "hard_overlay": hard,
+                "grid": "",
+            }
+        )
     # 三分位切档
     v_sorted = sorted(item["v_score"] for item in result)
     r_sorted = sorted(item["r_score"] for item in result)
     v_lo, v_hi = _terciles(v_sorted)
     r_lo, r_hi = _terciles(r_sorted)
     for item in result:
-        item["v_tier"] = "high" if item["v_score"] >= v_hi else "low" if item["v_score"] < v_lo else "mid"
-        item["r_tier"] = item["r_tier"] or ("high" if item["r_score"] >= r_hi else "low" if item["r_score"] < r_lo else "mid")
+        item["v_tier"] = (
+            "high" if item["v_score"] >= v_hi else "low" if item["v_score"] < v_lo else "mid"
+        )
+        item["r_tier"] = item["r_tier"] or (
+            "high" if item["r_score"] >= r_hi else "low" if item["r_score"] < r_lo else "mid"
+        )
         item["grid"] = f"value_{item['v_tier']}_risk_{item['r_tier']}"
     return result
 
@@ -402,8 +410,14 @@ def test_customer_detail_has_state_machine_and_triggers(store) -> None:
 
     assert detail["customer_id"] == "C015"
     assert detail["warning_state"] in {
-        "NOT_DUE", "PRE_DUE", "DPD_1_PLUS", "DPD_30_PLUS", "DPD_60_PLUS",
-        "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT", "INDIVIDUAL_ECL",
+        "NOT_DUE",
+        "PRE_DUE",
+        "DPD_1_PLUS",
+        "DPD_30_PLUS",
+        "DPD_60_PLUS",
+        "DPD_90_REVIEW",
+        "HIGH_WATCH_BUT_NOT_DEFAULT",
+        "INDIVIDUAL_ECL",
     }
     assert "explicit_count" in detail["extensions"]
     assert isinstance(detail["credit_triggers"]["increase_signals"], list)
@@ -470,8 +484,14 @@ LEFT JOIN ext e ON e.cid = c."客户编号_中台"
 然后在 `insights.py` 追加：
 
 ```python
-def _warning_state(max_dpd: int, overdue_amount: float, days_to_due: Any,
-                   recent_payment: float, blacklist: int, extension_count: int) -> str:
+def _warning_state(
+    max_dpd: int,
+    overdue_amount: float,
+    days_to_due: Any,
+    recent_payment: float,
+    blacklist: int,
+    extension_count: int,
+) -> str:
     """按口径第 8 节判定预警状态。"""
     if overdue_amount <= 0:
         if days_to_due is not None and 0 <= float(days_to_due) <= PRE_DUE_ALERT_DAYS:
@@ -488,11 +508,16 @@ def _warning_state(max_dpd: int, overdue_amount: float, days_to_due: Any,
     return "DPD_1_PLUS"
 
 
-def _action_tier(state: str, extension_count: int, gross_profit: float, date_reset_count: int) -> str:
+def _action_tier(
+    state: str, extension_count: int, gross_profit: float, date_reset_count: int
+) -> str:
     """按口径第 11 节判定四级动作。"""
     if date_reset_count >= 1:
         return "RED"
-    if state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT"} or extension_count >= 3:
+    if (
+        state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT"}
+        or extension_count >= 3
+    ):
         return "ORANGE"
     if state in {"DPD_30_PLUS", "DPD_60_PLUS"}:
         return "YELLOW"
@@ -550,11 +575,18 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
     r_tier = score.get("r_tier", "mid")
     utilization = (float(row[6]) / float(row[2])) if float(row[2]) else 0.0
     increase = (
-        v_tier == "high" and utilization >= 0.7 and recent_payment > 0 and r_tier != "high"
+        v_tier == "high"
+        and utilization >= 0.7
+        and recent_payment > 0
+        and r_tier != "high"
         and state not in {"INDIVIDUAL_ECL", "DPD_90_REVIEW"}
     )
-    decrease = (state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "DPD_60_PLUS", "DPD_30_PLUS"}
-                or ext_count >= 3 or utilization >= 1.0 or float(score.get("gross_profit", 0) or 0) <= 0)
+    decrease = (
+        state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "DPD_60_PLUS", "DPD_30_PLUS"}
+        or ext_count >= 3
+        or utilization >= 1.0
+        or float(score.get("gross_profit", 0) or 0) <= 0
+    )
     stop = blacklist == 2 or (rating.strip() not in ("", "无"))
     gross = float(score.get("gross_profit", 0) or 0)
 
@@ -571,7 +603,7 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
             "latest": latest,
         },
         "credit_triggers": {
-            "increase_signals": ["高价值且授信使用充分" ] if increase else [],
+            "increase_signals": ["高价值且授信使用充分"] if increase else [],
             "decrease_signals": ["DPD 恶化或展期频繁或授信满额"] if decrease else [],
             "stop_signals": ["黑名单/失信硬事实"] if stop else [],
         },
@@ -643,16 +675,18 @@ def get_action_queue(store: DuckDBStore) -> list[dict[str, Any]]:
             reasons.append("date_reset_extension")
         if detail["extensions"]["explicit_count"] >= 3:
             reasons.append("frequent_extension")
-        rows.append({
-            "entity_id": cid,
-            "entity_name": detail["customer_name"],
-            "side": "RECEIVABLE",
-            "tier": detail["action_tier"],
-            "warning_state": detail["warning_state"],
-            "reasons": reasons,
-            "v_tier": detail["scores"].get("v_tier", "mid"),
-            "r_tier": detail["scores"].get("r_tier", "mid"),
-        })
+        rows.append(
+            {
+                "entity_id": cid,
+                "entity_name": detail["customer_name"],
+                "side": "RECEIVABLE",
+                "tier": detail["action_tier"],
+                "warning_state": detail["warning_state"],
+                "reasons": reasons,
+                "v_tier": detail["scores"].get("v_tier", "mid"),
+                "r_tier": detail["scores"].get("r_tier", "mid"),
+            }
+        )
     severity = {"RED": 0, "ORANGE": 1, "YELLOW": 2, "GREEN": 3}
     return sorted(rows, key=lambda x: severity[x["tier"]])
 ```
@@ -689,8 +723,14 @@ git commit -m "feat: four-level action queue for receivables"
 - [ ] **Step 1: 写失败测试**
 
 ```python
-from ict_agent.insights import (get_ar_aging, get_inventory_aging, get_extension_heatmap,
-                                get_inventory_economic, get_revenue_trend, get_vintage)
+from ict_agent.insights import (
+    get_ar_aging,
+    get_inventory_aging,
+    get_extension_heatmap,
+    get_inventory_economic,
+    get_revenue_trend,
+    get_vintage,
+)
 
 
 def test_visualization_datasets_shapes(store) -> None:
@@ -715,7 +755,9 @@ Expected: FAIL（函数不存在）。
 
 ```python
 def get_ar_aging(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         SELECT to_char("快照时间", 'YYYY-MM') AS period,
                CASE WHEN "超期天数" <= 0 THEN '0'
                     WHEN "超期天数" <= 30 THEN '1-30'
@@ -725,12 +767,15 @@ def get_ar_aging(store: DuckDBStore) -> list[dict[str, Any]]:
                SUM("超期应收金额") AS amount
         FROM ar_snapshots
         GROUP BY 1, 2 ORDER BY 1, 2
-    """)
+    """,
+    )
     return [{"period": r[0], "bucket": r[1], "amount": float(r[2] or 0)} for r in rows]
 
 
 def get_inventory_aging(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         SELECT to_char("快照日期", 'YYYY-MM') AS quarter,
                CASE WHEN "库龄" <= 90 THEN '<=90'
                     WHEN "库龄" <= 180 THEN '91-180'
@@ -739,20 +784,26 @@ def get_inventory_aging(store: DuckDBStore) -> list[dict[str, Any]]:
                SUM("含税总价") AS amount
         FROM inventory_snapshots
         GROUP BY 1, 2 ORDER BY 1, 2
-    """)
+    """,
+    )
     return [{"quarter": r[0], "bucket": r[1], "amount": float(r[2] or 0)} for r in rows]
 
 
 def get_extension_heatmap(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         SELECT "客户编号" AS cid, to_char("快照时间", 'YYYY-MM') AS month, COUNT(*) AS cnt
         FROM extensions GROUP BY 1, 2 ORDER BY 1, 2
-    """)
+    """,
+    )
     return [{"customer_id": r[0], "month": r[1], "count": int(r[2])} for r in rows]
 
 
 def get_inventory_economic(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         SELECT CASE WHEN i."库龄" <= 90 THEN '<=90'
                     WHEN i."库龄" <= 180 THEN '91-180'
                     WHEN i."库龄" <= 365 THEN '181-365'
@@ -761,24 +812,37 @@ def get_inventory_economic(store: DuckDBStore) -> list[dict[str, Any]]:
         FROM inventory_snapshots i
         LEFT JOIN sales s USING ("物料编码")
         GROUP BY 1 ORDER BY 1
-    """)
+    """,
+    )
     return [{"bucket": r[0], "margin": float(r[1]) if r[1] is not None else None} for r in rows]
 
 
 def get_revenue_trend(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         SELECT to_char("出库日期", 'YYYY-MM') AS month,
                SUM("销售金额_折扣后_含税") AS revenue,
                SUM("销售金额_折扣后_含税") - SUM("出库成本金额") AS gross_profit,
                SUM("销售金额_折扣后_含税") - SUM("出库成本金额") AS cm2
         FROM sales GROUP BY 1 ORDER BY 1
-    """)
-    return [{"month": r[0], "revenue": float(r[1] or 0),
-             "gross_profit": float(r[2] or 0), "cm2": float(r[3] or 0)} for r in rows]
+    """,
+    )
+    return [
+        {
+            "month": r[0],
+            "revenue": float(r[1] or 0),
+            "gross_profit": float(r[2] or 0),
+            "cm2": float(r[3] or 0),
+        }
+        for r in rows
+    ]
 
 
 def get_vintage(store: DuckDBStore) -> list[dict[str, Any]]:
-    rows = _fetch_rows(store, """
+    rows = _fetch_rows(
+        store,
+        """
         WITH base AS (
             SELECT "客户编号" AS cid, to_char("快照时间", 'YYYY-MM') AS period,
                    SUM("应收金额") AS bal, SUM("超期应收金额") AS overdue
@@ -788,9 +852,16 @@ def get_vintage(store: DuckDBStore) -> list[dict[str, Any]]:
                COUNT(*) AS elapsed,
                CASE WHEN SUM(bal) = 0 THEN NULL ELSE SUM(overdue) / SUM(bal) END AS overdue_rate
         FROM base GROUP BY period ORDER BY period
-    """)
-    return [{"cohort": r[0], "elapsed": int(r[1]),
-             "overdue_rate": float(r[2]) if r[2] is not None else None} for r in rows]
+    """,
+    )
+    return [
+        {
+            "cohort": r[0],
+            "elapsed": int(r[1]),
+            "overdue_rate": float(r[2]) if r[2] is not None else None,
+        }
+        for r in rows
+    ]
 ```
 
 注意：`inventory_snapshots` 的列名按 `data.py` 实际 TableSpec 为准（`含税总价`、`库龄`、`快照时间` 已确认）；若有出入以 `data.py` 为准修正 SQL。`sales` 无费用字段，`cm2` 口径注明=毛利。
@@ -892,9 +963,17 @@ class ItemsResponse(BaseModel):
 在 `service.py` 追加（顶部 import insights；`Settings`/`load_settings`/`DuckDBStore` 均已导入；`Any` 从 `typing` 导入，若未导入则补）：
 
 ```python
-from ict_agent.insights import (get_action_queue, get_ar_aging, get_customer_detail, get_customer_scores,
-                                get_extension_heatmap, get_inventory_aging, get_inventory_economic,
-                                get_revenue_trend, get_vintage)
+from ict_agent.insights import (
+    get_action_queue,
+    get_ar_aging,
+    get_customer_detail,
+    get_customer_scores,
+    get_extension_heatmap,
+    get_inventory_aging,
+    get_inventory_economic,
+    get_revenue_trend,
+    get_vintage,
+)
 
 
 def _open_store(settings: Settings | None = None) -> DuckDBStore:
@@ -927,7 +1006,11 @@ async def insights_customers() -> ItemsResponse:
     return ItemsResponse(items=get_insights_customers())
 
 
-@app.get("/api/v1/insights/customers/{customer_id}", response_model=CustomerDetailResponse, tags=["insights"])
+@app.get(
+    "/api/v1/insights/customers/{customer_id}",
+    response_model=CustomerDetailResponse,
+    tags=["insights"],
+)
 async def insights_customer_detail(customer_id: str) -> CustomerDetailResponse:
     try:
         return CustomerDetailResponse(**get_insights_customer(customer_id))
