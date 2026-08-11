@@ -7,7 +7,7 @@ import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from pydantic_ai.models import Model
@@ -26,6 +26,17 @@ from ict_agent.data import (
     DuckDBStore,
     InvestigationWrite,
     ReviewWrite,
+)
+from ict_agent.insights import (
+    get_action_queue,
+    get_ar_aging,
+    get_customer_detail,
+    get_customer_scores,
+    get_extension_heatmap,
+    get_inventory_aging,
+    get_inventory_economic,
+    get_revenue_trend,
+    get_vintage,
 )
 from ict_agent.models import (
     CaseStatus,
@@ -439,6 +450,49 @@ async def investigate_case(
     message = error_message or "DeepSeek 案件调查未产生报告。"
     exc = RuntimeError(message)
     raise ServiceError(message, request_id, 502) from exc
+
+
+def _open_store(settings: Settings | None = None) -> DuckDBStore:
+    runtime_settings = settings or load_settings(require_api_key=False)
+    store = DuckDBStore(runtime_settings.database_path)
+    store.ensure_ready()
+    return store
+
+
+def get_insights_customers(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_customer_scores(_open_store(settings))
+
+
+def get_insights_customer(customer_id: str, *, settings: Settings | None = None) -> dict[str, Any]:
+    return get_customer_detail(_open_store(settings), customer_id)
+
+
+def get_insights_ar_aging(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_ar_aging(_open_store(settings))
+
+
+def get_insights_inventory_aging(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_inventory_aging(_open_store(settings))
+
+
+def get_insights_extension_heatmap(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_extension_heatmap(_open_store(settings))
+
+
+def get_insights_inventory_economic(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_inventory_economic(_open_store(settings))
+
+
+def get_insights_revenue_trend(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_revenue_trend(_open_store(settings))
+
+
+def get_insights_vintage(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_vintage(_open_store(settings))
+
+
+def get_insights_actions(*, settings: Settings | None = None) -> list[dict[str, Any]]:
+    return get_action_queue(_open_store(settings))
 
 
 def review_case(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -442,3 +442,28 @@ class RiskOverviewResponse(BaseModel):
     critical_cases: int
     exposure_amount: float
     cases_by_type: dict[str, int]
+
+
+class InsightCustomerItem(BaseModel):
+    customer_id: str
+    customer_name: str
+    v_score: float
+    r_score: float
+    v_tier: str
+    r_tier: str
+    grid: str
+    hard_overlay: bool
+
+
+class CustomerDetailResponse(BaseModel):
+    customer_id: str
+    customer_name: str
+    scores: dict[str, Any]
+    warning_state: str
+    extensions: dict[str, Any]
+    credit_triggers: dict[str, list[str]]
+    action_tier: str
+
+
+class ItemsResponse(BaseModel):
+    items: list[dict[str, Any]]

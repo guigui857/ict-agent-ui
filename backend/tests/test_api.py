@@ -84,3 +84,25 @@ def test_investigation_contract_streams_ndjson(monkeypatch: MonkeyPatch) -> None
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/x-ndjson")
     assert response.json()["event_type"] == "RUN_STARTED"
+
+
+def test_insights_endpoints_return_json() -> None:
+    for path in (
+        "/api/v1/insights/customers",
+        "/api/v1/insights/ar-aging",
+        "/api/v1/insights/inventory-aging",
+        "/api/v1/insights/revenue-trend",
+        "/api/v1/insights/vintage",
+        "/api/v1/insights/actions",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers["content-type"].startswith("application/json")
+
+
+def test_insights_customer_detail_and_404() -> None:
+    first = client.get("/api/v1/insights/customers").json()["items"][0]
+    detail = client.get(f"/api/v1/insights/customers/{first['customer_id']}")
+    assert detail.status_code == 200
+    assert "warning_state" in detail.json()
+    assert client.get("/api/v1/insights/customers/NO_SUCH_CUSTOMER").status_code == 404

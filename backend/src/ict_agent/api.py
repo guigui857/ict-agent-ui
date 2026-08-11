@@ -14,10 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from ict_agent.models import (
     CaseStatus,
     CaseType,
+    CustomerDetailResponse,
     DashboardResponse,
     DataSnapshotResponse,
     ErrorResponse,
     HealthResponse,
+    ItemsResponse,
     ReviewRecord,
     ReviewRequest,
     RiskCaseDetail,
@@ -30,6 +32,15 @@ from ict_agent.service import (
     get_case_detail,
     get_dashboard,
     get_data_snapshot,
+    get_insights_actions,
+    get_insights_ar_aging,
+    get_insights_customer,
+    get_insights_customers,
+    get_insights_extension_heatmap,
+    get_insights_inventory_aging,
+    get_insights_inventory_economic,
+    get_insights_revenue_trend,
+    get_insights_vintage,
     get_risk_overview,
     list_cases,
     prepare_investigation,
@@ -181,6 +192,72 @@ async def submit_case_review(case_id: str, request: ReviewRequest) -> ReviewReco
     """提交人工审核、处置或持续观察决定。"""
 
     return review_case(case_id, request)
+
+
+@app.get("/api/v1/insights/customers", response_model=ItemsResponse, tags=["insights"])
+async def insights_customers() -> ItemsResponse:
+    """返回全部授信客户的价值/风险评分、档位与九宫格。"""
+
+    return ItemsResponse(items=get_insights_customers())
+
+
+@app.get("/api/v1/insights/customers/{customer_id}", response_model=CustomerDetailResponse, tags=["insights"])
+async def insights_customer_detail(customer_id: str) -> CustomerDetailResponse:
+    """返回单客户评分、预警状态、展期识别、授信触发与四级动作。"""
+
+    try:
+        return CustomerDetailResponse(**get_insights_customer(customer_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/insights/ar-aging", response_model=ItemsResponse, tags=["insights"])
+async def insights_ar_aging() -> ItemsResponse:
+    """返回应收账龄结构（期、账龄桶、金额）。"""
+
+    return ItemsResponse(items=get_insights_ar_aging())
+
+
+@app.get("/api/v1/insights/inventory-aging", response_model=ItemsResponse, tags=["insights"])
+async def insights_inventory_aging() -> ItemsResponse:
+    """返回库存库龄结构（季度、库龄桶、金额）。"""
+
+    return ItemsResponse(items=get_insights_inventory_aging())
+
+
+@app.get("/api/v1/insights/extension-heatmap", response_model=ItemsResponse, tags=["insights"])
+async def insights_extension_heatmap() -> ItemsResponse:
+    """返回展期月度热度（客户、月份、count）。"""
+
+    return ItemsResponse(items=get_insights_extension_heatmap())
+
+
+@app.get("/api/v1/insights/inventory-economic", response_model=ItemsResponse, tags=["insights"])
+async def insights_inventory_economic() -> ItemsResponse:
+    """返回库存经济性（库龄桶、边际毛利）。"""
+
+    return ItemsResponse(items=get_insights_inventory_economic())
+
+
+@app.get("/api/v1/insights/revenue-trend", response_model=ItemsResponse, tags=["insights"])
+async def insights_revenue_trend() -> ItemsResponse:
+    """返回月度销售与毛利趋势。"""
+
+    return ItemsResponse(items=get_insights_revenue_trend())
+
+
+@app.get("/api/v1/insights/vintage", response_model=ItemsResponse, tags=["insights"])
+async def insights_vintage() -> ItemsResponse:
+    """返回应收账龄队列的 Vintage 逾期率。"""
+
+    return ItemsResponse(items=get_insights_vintage())
+
+
+@app.get("/api/v1/insights/actions", response_model=ItemsResponse, tags=["insights"])
+async def insights_actions() -> ItemsResponse:
+    """返回应收侧四级动作队列。"""
+
+    return ItemsResponse(items=get_insights_actions())
 
 
 @app.get("/", include_in_schema=False)
