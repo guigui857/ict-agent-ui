@@ -334,3 +334,33 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
         },
         "action_tier": _action_tier(state, ext_count, gross, date_reset),
     }
+
+
+def get_action_queue(store: DuckDBStore) -> list[dict[str, Any]]:
+    """应收侧四级动作队列，按严重度排序。"""
+    rows = []
+    for detail_row in _fetch_rows(store, _WARNING_SQL):
+        cid = str(detail_row[0])
+        try:
+            detail = get_customer_detail(store, cid)
+        except KeyError:
+            continue
+        reasons = [detail["warning_state"]]
+        if detail["credit_triggers"]["stop_signals"]:
+            reasons.append("stop_signal")
+        if detail["extensions"]["date_reset_count"]:
+            reasons.append("date_reset_extension")
+        if detail["extensions"]["explicit_count"] >= 3:
+            reasons.append("frequent_extension")
+        rows.append({
+            "entity_id": cid,
+            "entity_name": detail["customer_name"],
+            "side": "RECEIVABLE",
+            "tier": detail["action_tier"],
+            "warning_state": detail["warning_state"],
+            "reasons": reasons,
+            "v_tier": detail["scores"].get("v_tier", "mid"),
+            "r_tier": detail["scores"].get("r_tier", "mid"),
+        })
+    severity = {"RED": 0, "ORANGE": 1, "YELLOW": 2, "GREEN": 3}
+    return sorted(rows, key=lambda x: severity[x["tier"]])

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ict_agent.insights import get_customer_detail, get_customer_scores
+from ict_agent.insights import get_action_queue, get_customer_detail, get_customer_scores
 
 
 def test_scores_return_all_credit_customers(store) -> None:
@@ -46,3 +46,12 @@ def test_customer_detail_has_state_machine_and_triggers(store) -> None:
     assert "explicit_count" in detail["extensions"]
     assert isinstance(detail["credit_triggers"]["increase_signals"], list)
     assert detail["action_tier"] in {"GREEN", "YELLOW", "ORANGE", "RED"}
+
+
+def test_action_queue_sorted_by_severity(store) -> None:
+    queue = get_action_queue(store)
+
+    order = {"RED": 0, "ORANGE": 1, "YELLOW": 2, "GREEN": 3}
+    tiers = [order[q["tier"]] for q in queue]
+    assert tiers == sorted(tiers)
+    assert all(q["side"] == "RECEIVABLE" for q in queue)
