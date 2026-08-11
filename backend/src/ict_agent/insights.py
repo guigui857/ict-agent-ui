@@ -212,8 +212,8 @@ ext AS (
 SELECT
     c."客户编号_中台" AS cid,          -- 0
     c."客户名称" AS cname,              -- 1
-    c."授信额度" AS credit_limit,       -- 2
-    c."黑白名单状态" AS blacklist,      -- 3
+    COALESCE(c."授信额度", 0) AS credit_limit,       -- 2
+    COALESCE(c."黑白名单状态", 0) AS blacklist,      -- 3
     c."失信分级" AS rating,             -- 4
     COALESCE(p.max_dpd, 0) AS max_dpd,  -- 5
     COALESCE(p.overdue_amount, 0) AS overdue_amount,  -- 6
@@ -248,9 +248,9 @@ def _warning_state(max_dpd: int, overdue_amount: float, days_to_due: Any,
     return "DPD_1_PLUS"
 
 
-def _action_tier(state: str, extension_count: int, gross_profit: float, date_reset_count: int) -> str:
+def _action_tier(state: str, extension_count: int, gross_profit: float, date_reset_count: int, stop_signal: bool) -> str:
     """按口径第 11 节判定四级动作。"""
-    if date_reset_count >= 1:
+    if stop_signal or date_reset_count >= 1:
         return "RED"
     if state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT"} or extension_count >= 3:
         return "ORANGE"
@@ -332,7 +332,7 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
             "decrease_signals": ["DPD 恶化或展期频繁或授信满额"] if decrease else [],
             "stop_signals": ["黑名单/失信硬事实"] if stop else [],
         },
-        "action_tier": _action_tier(state, ext_count, gross, date_reset),
+        "action_tier": _action_tier(state, ext_count, gross, date_reset, stop),
     }
 
 

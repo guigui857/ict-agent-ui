@@ -48,6 +48,13 @@ def test_customer_detail_has_state_machine_and_triggers(store) -> None:
     assert detail["action_tier"] in {"GREEN", "YELLOW", "ORANGE", "RED"}
 
 
+def test_blacklist_customer_is_red_tier(store) -> None:
+    queue = get_action_queue(store)
+    blacklisted = [q for q in queue if q["entity_id"] == "C002"]
+    assert blacklisted, "fixture 应包含黑名单客户 C002"
+    assert blacklisted[0]["tier"] == "RED"
+
+
 def test_action_queue_sorted_by_severity(store) -> None:
     queue = get_action_queue(store)
 
