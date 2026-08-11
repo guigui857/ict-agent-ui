@@ -16,6 +16,7 @@ def test_scores_return_all_credit_customers(store) -> None:
         assert row["v_tier"] in {"high", "mid", "low"}
         assert row["r_tier"] in {"high", "mid", "low"}
         assert row["grid"].startswith("value")
+        assert row["warning_state"] in {"NOT_DUE", "DPD_1_PLUS", "DPD_30_PLUS", "DPD_60_PLUS", "DPD_90_REVIEW"}
 
 
 def test_blacklist_is_hard_high(store) -> None:

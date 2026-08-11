@@ -143,6 +143,14 @@ def get_customer_scores(store: DuckDBStore) -> list[dict[str, Any]]:
         blacklist = int(row[13])
         rating = str(row[14] or "")
         hard = blacklist == 2 or (rating.strip() != "" and rating.strip() != "无")
+        max_dpd = int(row[7])
+        warning_state = (
+            "DPD_90_REVIEW" if max_dpd >= 90
+            else "DPD_60_PLUS" if max_dpd >= 60
+            else "DPD_30_PLUS" if max_dpd >= 30
+            else "DPD_1_PLUS" if max_dpd >= 1
+            else "NOT_DUE"
+        )
         result.append({
             "customer_id": cid,
             "customer_name": str(row[1] or cid),
@@ -152,6 +160,7 @@ def get_customer_scores(store: DuckDBStore) -> list[dict[str, Any]]:
             "v_tier": "",
             "r_tier": "high" if hard else "",
             "hard_overlay": hard,
+            "warning_state": warning_state,
             "grid": "",
         })
     # 三分位切档
