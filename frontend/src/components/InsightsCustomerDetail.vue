@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, CalendarDays, CodeXml, ShieldAlert, Wallet } from "lucide-vue-next";
+import { ArrowLeft, ShieldAlert } from "lucide-vue-next";
 import Badge from "./ui/Badge.vue";
 import { api } from "../lib";
 

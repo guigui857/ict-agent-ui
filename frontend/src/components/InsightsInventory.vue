@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import VueApexCharts from "vue3-apexcharts";
-import { api, formatMoney, formatPercent } from "../lib";
+import { api, formatMoney } from "../lib";
 
 const aging = ref([]);
 const economic = ref([]);
@@ -43,6 +43,7 @@ const economicOptions = computed(() => ({
   grid: { borderColor: "#e4e7ec", strokeDashArray: 3 },
   tooltip: { y: { formatter: (value) => (value == null ? "无销售匹配" : formatMoney(value)) } },
 }));
+const noSalesBuckets = computed(() => economic.value.filter((r) => r.margin == null).map((r) => `${r.bucket} 天`));
 
 async function load() {
   loading.value = true;
@@ -77,6 +78,7 @@ onMounted(load);
     <section class="card">
       <div class="panel-head"><div class="flex items-center gap-2"><span class="section-index">E</span><h3>库龄 × 预计毛利</h3></div><span class="subtle-copy">高龄低毛利 SKU 风险</span></div>
       <div class="px-5 pt-4"><VueApexCharts v-if="!loading" type="bar" height="280" :options="economicOptions" :series="[{ name: '平均含税粗算毛利', data: economicData }]" /></div>
+      <p v-if="noSalesBuckets.length" class="px-5 pt-2 pb-4 text-xs text-muted">无销售匹配（无毛利可算）：{{ noSalesBuckets.join("、") }} —— 该库龄层在销售流水无对应物料销售。</p>
     </section>
   </div>
 </template>

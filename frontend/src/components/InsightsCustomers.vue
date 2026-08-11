@@ -2,9 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import VueApexCharts from "vue3-apexcharts";
-import { ArrowRight, ShieldAlert } from "lucide-vue-next";
 import Badge from "./ui/Badge.vue";
-import { api, formatMoney } from "../lib";
+import { api } from "../lib";
 
 const router = useRouter();
 const customers = ref([]);
@@ -112,8 +111,8 @@ function openCustomer(id) {
           <tbody>
             <tr v-for="c in customers" :key="c.customer_id" tabindex="0" @click="openCustomer(c.customer_id)" @keydown.enter="openCustomer(c.customer_id)">
               <td><strong class="block text-[13px] text-ink">{{ c.customer_name }}</strong><small class="block text-xs text-muted">{{ c.customer_id }}</small></td>
-              <td class="money-cell">{{ c.v_score.toFixed(1) }}</td>
-              <td class="money-cell">{{ c.r_score.toFixed(1) }}</td>
+              <td class="money-cell">{{ c.v_score?.toFixed?.(1) ?? "—" }}</td>
+              <td class="money-cell">{{ c.r_score?.toFixed?.(1) ?? "—" }}</td>
               <td><Badge tone="neutral">{{ vLabel[c.v_tier] }} · {{ rLabel[c.r_tier] }}</Badge></td>
               <td><Badge :tone="stateBadge[c.warning_state] || 'neutral'">{{ c.warning_state }}</Badge></td>
               <td>
