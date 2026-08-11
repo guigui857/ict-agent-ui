@@ -205,6 +205,7 @@ per_customer AS (
         "客户编号" AS cid,
         MAX("超期天数") AS max_dpd,
         SUM("超期应收金额") AS overdue_amount,
+        SUM("应收金额") AS ar_balance,
         MIN(CASE WHEN "最终承诺还款日期" >= "快照时间"
                  THEN CAST(date_diff('day', "快照时间", "最终承诺还款日期") AS INTEGER)
                  END) AS days_to_due,
@@ -235,7 +236,8 @@ SELECT
     COALESCE(p9.recent_payment, 0) AS recent_payment, -- 9
     COALESCE(e.extension_count, 0) AS extension_count, -- 10
     e.earliest,                         -- 11
-    e.latest                            -- 12
+    e.latest,                           -- 12
+    COALESCE(p.ar_balance, 0) AS ar_balance  -- 13
 FROM customer_credit c
 LEFT JOIN per_customer p ON p.cid = c."客户编号_中台"
 LEFT JOIN payments90 p9 ON p9.cid = c."客户编号_中台"
@@ -276,12 +278,11 @@ def _action_tier(
     if (
         state in {"INDIVIDUAL_ECL", "DPD_90_REVIEW", "HIGH_WATCH_BUT_NOT_DEFAULT"}
         or extension_count >= 3
+        or gross_profit <= 0
     ):
         return "ORANGE"
     if state in {"DPD_30_PLUS", "DPD_60_PLUS"}:
         return "YELLOW"
-    if gross_profit <= 0:
-        return "ORANGE"
     return "GREEN"
 
 
@@ -313,7 +314,7 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
         raise KeyError(f"未知客户 {customer_id}")
     # 列序（与 _WARNING_SQL 对齐）：0 cid, 1 cname, 2 credit_limit, 3 blacklist, 4 rating,
     # 5 max_dpd, 6 overdue, 7 days_to_due, 8 extended_rows, 9 recent_payment, 10 extension_count,
-    # 11 earliest, 12 latest
+    # 11 earliest, 12 latest, 13 ar_balance
     max_dpd, overdue, days_to_due = int(row[5]), float(row[6]), row[7]
     recent_payment, blacklist, ext_count = float(row[9]), int(row[3]), int(row[10])
     rating = str(row[4] or "")
@@ -329,7 +330,7 @@ def get_customer_detail(store: DuckDBStore, customer_id: str) -> dict[str, Any]:
     score = scores.get(customer_id, {})
     v_tier = score.get("v_tier", "mid")
     r_tier = score.get("r_tier", "mid")
-    utilization = (float(row[6]) / float(row[2])) if float(row[2]) else 0.0
+    utilization = (float(row[13]) / float(row[2])) if float(row[2]) else 0.0
     increase = (
         v_tier == "high"
         and utilization >= 0.7
