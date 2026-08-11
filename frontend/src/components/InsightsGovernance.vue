@@ -30,6 +30,24 @@ async function load() {
   }
 }
 onMounted(load);
+
+const overrides = ref([]);
+const overrideLoading = ref(true);
+const overrideError = ref("");
+
+const decisionText = { MONITOR: "持续观察", ACTION_REQUIRED: "需要处置", FALSE_POSITIVE: "确认误报", RESOLVED: "已经解决" };
+const overrideBadge = { APPROVED: "success", REJECTED: "warning" };
+
+async function loadOverrides() {
+  overrideLoading.value = false;
+  try {
+    const r = await api("/api/v1/insights/overrides");
+    overrides.value = r.items || [];
+  } catch (e) {
+    overrideError.value = e.message;
+  }
+}
+onMounted(loadOverrides);
 </script>
 
 <template>
@@ -62,10 +80,28 @@ onMounted(load);
       </div>
     </section>
 
-    <section class="card p-4">
-      <div class="flex items-start gap-3">
-        <ShieldCheck :size="18" class="mt-0.5 flex-none text-muted" />
-        <p class="text-xs leading-5 text-muted"><strong class="text-ink">人工 override 审计记录</strong>将在 P3 提供（保留原始规则命中 + override 状态/原因/到期日/审批人，防“反复覆盖形成永不逾期假象”）。</p>
+    <section class="card overflow-hidden">
+      <div class="panel-head">
+        <div class="flex items-center gap-2"><span class="section-index">O</span><h3>人工 override 审计</h3></div>
+        <span class="subtle-copy">保留原始规则命中 · {{ overrides.length }} 条</span>
+      </div>
+      <div v-if="overrideError" class="p-4 text-sm text-danger">{{ overrideError }}</div>
+      <div class="overflow-x-auto">
+        <table class="table-base min-w-[900px]">
+          <thead><tr><th>时间</th><th>案件</th><th>审核决定</th><th>审核人</th><th>override</th><th>原因 / 审批人</th><th>到期日</th></tr></thead>
+          <tbody>
+            <tr v-for="o in overrides" :key="o.review_id">
+              <td class="whitespace-nowrap text-xs text-muted">{{ o.created_at }}</td>
+              <td><code class="font-mono text-xs text-ink">{{ o.case_id }}</code></td>
+              <td><Badge tone="neutral">{{ decisionText[o.decision] || o.decision }}</Badge></td>
+              <td class="text-sm text-ink">{{ o.reviewer }}</td>
+              <td><Badge :tone="overrideBadge[o.override_status] || 'neutral'">{{ o.override_status }}</Badge></td>
+              <td class="text-xs text-muted">{{ o.override_reason || "—" }}<span v-if="o.approver" class="block text-faint">审批人：{{ o.approver }}</span></td>
+              <td class="whitespace-nowrap text-xs text-muted">{{ o.override_expiry_date || "—" }}</td>
+            </tr>
+            <tr v-if="!overrideLoading && !overrides.length"><td colspan="7" class="empty-state">还没有 override 审计记录</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
   </div>
