@@ -7,7 +7,7 @@ import Modal from "./ui/Modal.vue";
 import SelectInput from "./ui/SelectInput.vue";
 import TextArea from "./ui/TextArea.vue";
 import TextInput from "./ui/TextInput.vue";
-import { formatDateTime, formatMoney, listColor, labels, recommendationStatusColor } from "../lib";
+import { formatDateTime, formatMoney, listColor, labels, localizeRecommendationText, recommendationStatusColor } from "../lib";
 import { reviewRecommendation, workspace } from "../store";
 
 const filter = ref("");
@@ -84,7 +84,7 @@ function jumpToPage() {
   goToPage(pageJump.value);
 }
 
-const evidenceText = (item) => (item.evidence || []).map((e) => e.summary).join("；") || "—";
+const evidenceText = (item) => (item.evidence || []).map((e) => localizeRecommendationText(e.summary)).join("；") || "—";
 </script>
 
 <template>
@@ -132,8 +132,8 @@ const evidenceText = (item) => (item.evidence || []).map((e) => e.summary).join(
                 </div>
               </td>
               <td>
-                <p class="block truncate text-sm text-ink" :title="item.reason">{{ item.reason }}</p>
-                <span class="block truncate text-[0.75rem] text-muted" :title="evidenceText(item)">证据：{{ evidenceText(item) }} · 触发规则：{{ item.trigger_rule }}</span>
+                <p class="block truncate text-sm text-ink" :title="localizeRecommendationText(item.reason)">{{ localizeRecommendationText(item.reason) }}</p>
+                <span class="block truncate text-[0.75rem] text-muted" :title="evidenceText(item)">证据：{{ evidenceText(item) }} · 触发规则：{{ labels.recommendationTrigger[item.trigger_rule] || "其他规则" }}</span>
               </td>
               <td><span class="text-sm text-muted">{{ item.health_change }}</span></td>
               <td class="money-cell">{{ formatMoney(item.risk_amount) }}</td>
